@@ -318,10 +318,19 @@ export default function App() {
     try {
       await updateComment(comment.id, { resolved: !comment.resolved })
       await loadComments()
-      await updateProjectCounts(activeProject.key)
-      setSelected(c => c?.id === comment.id ? { ...c, resolved: !c.resolved } : c)
-    } catch (e) {
-      alert('Failed to update: ' + e.message)
+      async function updateProjectCounts(projectKey) {
+  const all = await getAllProjectComments(projectKey)
+  const open_count = all.filter(c => !c.resolved).length
+  const resolved_count = all.filter(c => c.resolved).length
+  const { error } = await supabase
+    .from('projects')
+    .update({ open_count, resolved_count })
+    .eq('key', projectKey)
+  if (error) throw error
+  setProjects(prev => prev.map(p =>
+    p.key === projectKey ? { ...p, open_count, resolved_count } : p
+  ))
+}message)
     }
   }
 
