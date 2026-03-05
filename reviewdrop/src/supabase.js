@@ -19,10 +19,10 @@ export async function getProjects() {
 export async function upsertProject(project) {
   const { error } = await supabase
     .from('projects')
-    .upsert(project, { onConflict: 'key', ignoreDuplicates: false })
+    .upsert(project, { onConflict: 'key' })
   if (error) throw error
 }
-}
+
 export async function deleteProject(key) {
   // Delete comments
   await supabase.from('comments').delete().eq('project_key', key)
