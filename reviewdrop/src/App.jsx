@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import {
-  getProjects, upsertProject, deleteProject as dbDeleteProject,
+import { supabase, getProjects, upsertProject, deleteProject as dbDeleteProject,
   uploadPage, getPageUrl,
   getComments, addComment, updateComment, deleteComment,
   subscribeToComments, getAllProjectComments,
@@ -318,19 +317,10 @@ export default function App() {
     try {
       await updateComment(comment.id, { resolved: !comment.resolved })
       await loadComments()
-      async function updateProjectCounts(projectKey) {
-  const all = await getAllProjectComments(projectKey)
-  const open_count = all.filter(c => !c.resolved).length
-  const resolved_count = all.filter(c => c.resolved).length
-  const { error } = await supabase
-    .from('projects')
-    .update({ open_count, resolved_count })
-    .eq('key', projectKey)
-  if (error) throw error
-  setProjects(prev => prev.map(p =>
-    p.key === projectKey ? { ...p, open_count, resolved_count } : p
-  ))
-}message)
+      await updateProjectCounts(activeProject.key)
+      setSelected(c => c?.id === comment.id ? { ...c, resolved: !c.resolved } : c)
+    } catch (e) {
+      alert('Failed to update: ' + e.message)
     }
   }
 
@@ -348,7 +338,10 @@ export default function App() {
     const all = await getAllProjectComments(projectKey)
     const open_count = all.filter(c => !c.resolved).length
     const resolved_count = all.filter(c => c.resolved).length
-    await upsertProject({ key: projectKey, open_count, resolved_count })
+    await supabase
+      .from('projects')
+      .update({ open_count, resolved_count })
+      .eq('key', projectKey)
     setProjects(prev => prev.map(p =>
       p.key === projectKey ? { ...p, open_count, resolved_count } : p
     ))
