@@ -5,19 +5,43 @@ import { supabase, getProjects, upsertProject, deleteProject as dbDeleteProject,
   subscribeToComments, getAllProjectComments,
 } from './supabase.js'
 
+// ─── Design tokens (Clearstory-inspired) ─────────────────────────────────────
+const T = {
+  bg:        '#F7F8FA',
+  surface:   '#FFFFFF',
+  border:    '#E4E7EC',
+  borderHov: '#B0BAC9',
+  text:      '#111827',
+  textSub:   '#6B7280',
+  textMuted: '#9CA3AF',
+  primary:   '#0D7C66',   // teal-green
+  primaryHov:'#0A6655',
+  primaryBg: '#E8F5F2',
+  danger:    '#DC2626',
+  dangerBg:  '#FEF2F2',
+  success:   '#059669',
+  successBg: '#ECFDF5',
+  warning:   '#D97706',
+  warningBg: '#FFFBEB',
+  navy:      '#0F172A',
+  shadow:    '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+  shadowMd:  '0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)',
+  shadowLg:  '0 20px 40px rgba(0,0,0,0.12)',
+  radius:    '8px',
+  radiusLg:  '12px',
+}
+
 const COLORS = [
-  { bg: '#3B82F6', label: 'Blue' },
-  { bg: '#F43F5E', label: 'Rose' },
-  { bg: '#10B981', label: 'Green' },
-  { bg: '#F59E0B', label: 'Amber' },
-  { bg: '#8B5CF6', label: 'Purple' },
+  { bg: '#0D7C66', label: 'Teal' },
+  { bg: '#2563EB', label: 'Blue' },
+  { bg: '#7C3AED', label: 'Purple' },
+  { bg: '#DC2626', label: 'Red' },
+  { bg: '#D97706', label: 'Amber' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function makeProjectKey(file) {
-  return file.name.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40)
-    + '-' + file.size
+  return file.name.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40) + '-' + file.size
 }
 
 async function renderPDF(file) {
@@ -45,81 +69,94 @@ async function renderPDF(file) {
   return pages
 }
 
-// ─── Gallery Card ─────────────────────────────────────────────────────────────
-
-function ProjectCard({ project, onOpen, onDelete }) {
-  const [hovered, setHovered] = useState(false)
+// ─── Btn component ────────────────────────────────────────────────────────────
+function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, style = {} }) {
+  const [hov, setHov] = useState(false)
+  const base = {
+    border: 'none', cursor: disabled ? 'default' : 'pointer', fontWeight: 600,
+    borderRadius: T.radius, transition: 'all 0.15s', display: 'inline-flex',
+    alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontFamily: 'inherit',
+    opacity: disabled ? 0.5 : 1,
+  }
+  const sizes = { sm: { padding: '5px 12px', fontSize: 12 }, md: { padding: '8px 16px', fontSize: 13 }, lg: { padding: '10px 20px', fontSize: 14 } }
+  const variants = {
+    primary:  { background: hov ? T.primaryHov : T.primary, color: '#fff' },
+    secondary:{ background: hov ? T.border : T.surface, color: T.text, border: `1px solid ${T.border}` },
+    ghost:    { background: hov ? T.bg : 'transparent', color: T.textSub },
+    danger:   { background: hov ? '#B91C1C' : T.danger, color: '#fff' },
+  }
   return (
-    <div
-      onClick={() => onOpen(project)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: '#111827', borderRadius: 12,
-        border: `1px solid ${hovered ? '#3B82F6' : '#1F2D40'}`,
-        overflow: 'hidden', cursor: 'pointer',
-        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
-        transition: 'all 0.15s', display: 'flex', flexDirection: 'column',
-        position: 'relative',
-      }}
-    >
+    <button onClick={disabled ? undefined : onClick} disabled={disabled}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>
+      {children}
+    </button>
+  )
+}
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+function Badge({ children, color = 'gray' }) {
+  const colors = {
+    red:   { background: T.dangerBg,  color: T.danger },
+    green: { background: T.successBg, color: T.success },
+    gray:  { background: T.bg,        color: T.textSub },
+    teal:  { background: T.primaryBg, color: T.primary },
+  }
+  return (
+    <span style={{ ...colors[color], fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {children}
+    </span>
+  )
+}
+
+// ─── Project Card ─────────────────────────────────────────────────────────────
+function ProjectCard({ project, onOpen, onDelete }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div onClick={() => onOpen(project)}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: T.surface, borderRadius: T.radiusLg, border: `1px solid ${hov ? T.borderHov : T.border}`, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s', boxShadow: hov ? T.shadowMd : T.shadow, transform: hov ? 'translateY(-2px)' : 'none', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+
       {/* Thumbnail */}
-      <div style={{ height: 150, background: '#0A0F1E', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        {project.thumbnail_url ? (
-          <img src={project.thumbnail_url} alt={project.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>
-            {project.type === 'pdf' ? '📄' : '🖼️'}
-          </div>
-        )}
-        <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(10,15,30,0.85)', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, color: '#94A3B8' }}>
-          {project.type === 'pdf' ? `PDF · ${project.page_count}p` : 'IMG'}
+      <div style={{ height: 148, background: T.bg, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+        {project.thumbnail_url
+          ? <img src={project.thumbnail_url} alt={project.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: T.textMuted }}>{project.type === 'pdf' ? '📄' : '🖼️'}</div>
+        }
+        <div style={{ position: 'absolute', top: 10, left: 10 }}>
+          <Badge color="gray">{project.type === 'pdf' ? `PDF · ${project.page_count}p` : 'Image'}</Badge>
         </div>
       </div>
 
       {/* Info */}
-      <div style={{ padding: '10px 12px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#E2E8F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ padding: '12px 14px', flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
           {project.name}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-          <div style={{ fontSize: 11, color: '#475569' }}>
-            {new Date(project.uploaded_at).toLocaleDateString()}
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: T.textMuted }}>{new Date(project.uploaded_at).toLocaleDateString()}</span>
           <div style={{ display: 'flex', gap: 5 }}>
-            {project.open_count > 0 && (
-              <span style={{ fontSize: 10, background: '#F43F5E22', color: '#F43F5E', borderRadius: 8, padding: '1px 6px', fontWeight: 700 }}>
-                {project.open_count} open
-              </span>
-            )}
-            {project.resolved_count > 0 && (
-              <span style={{ fontSize: 10, background: '#10B98122', color: '#10B981', borderRadius: 8, padding: '1px 6px', fontWeight: 700 }}>
-                {project.resolved_count} done
-              </span>
-            )}
-            {!project.open_count && !project.resolved_count && (
-              <span style={{ fontSize: 10, color: '#334155' }}>no comments</span>
-            )}
+            {project.open_count > 0 && <Badge color="red">{project.open_count} open</Badge>}
+            {project.resolved_count > 0 && <Badge color="green">{project.resolved_count} done</Badge>}
+            {!project.open_count && !project.resolved_count && <span style={{ fontSize: 11, color: T.textMuted }}>No comments</span>}
           </div>
         </div>
       </div>
 
-      {/* Delete btn */}
-      {hovered && (
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(project.key) }}
-          style={{ position: 'absolute', top: 8, left: 8, width: 26, height: 26, borderRadius: 6, background: 'rgba(69,10,10,0.9)', border: 'none', color: '#FCA5A5', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >×</button>
+      {/* Delete */}
+      {hov && (
+        <button onClick={e => { e.stopPropagation(); onDelete(project.key) }}
+          style={{ position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.95)', border: `1px solid ${T.border}`, color: T.danger, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: T.shadow }}>
+          ×
+        </button>
       )}
     </div>
   )
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
-
 export default function App() {
-  const [view, setView] = useState('gallery') // gallery | review
+  const [view, setView] = useState('gallery')
   const [projects, setProjects] = useState([])
   const [activeProject, setActiveProject] = useState(null)
   const [pageUrls, setPageUrls] = useState([])
@@ -138,154 +175,79 @@ export default function App() {
   const fileRef = useRef()
   const realtimeRef = useRef()
 
-  // Load projects on mount
-  useEffect(() => {
-    loadProjects()
-  }, [])
+  useEffect(() => { loadProjects() }, [])
 
-  // Load comments + subscribe to realtime when project/page changes
   useEffect(() => {
     if (!activeProject) return
     loadComments()
-
-    // Unsubscribe previous
     if (realtimeRef.current) realtimeRef.current.unsubscribe()
-
-    // Subscribe to realtime updates
-    realtimeRef.current = subscribeToComments(activeProject.key, currentPage, () => {
-      loadComments()
-    })
-
+    realtimeRef.current = subscribeToComments(activeProject.key, currentPage, () => loadComments())
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe() }
   }, [activeProject, currentPage])
 
   async function loadProjects() {
-    try {
-      const data = await getProjects()
-      setProjects(data || [])
-    } catch (e) {
-      console.error('Failed to load projects:', e)
-    }
+    try { setProjects((await getProjects()) || []) } catch (e) { console.error(e) }
   }
 
   async function loadComments() {
     if (!activeProject) return
-    try {
-      const data = await getComments(activeProject.key, currentPage)
-      setComments(data || [])
-    } catch (e) {
-      console.error('Failed to load comments:', e)
-    }
+    try { setComments((await getComments(activeProject.key, currentPage)) || []) } catch (e) { console.error(e) }
   }
 
-  // ── File Upload ────────────────────────────────────────────────────────────
   async function handleFile(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    setUploading(true)
-    setUploadProgress('Reading file…')
-
+    const file = e.target.files[0]; if (!file) return
+    setUploading(true); setUploadProgress('Reading file…')
     try {
       const isPDF = file.type === 'application/pdf'
       const key = makeProjectKey(file)
       const name = file.name.replace(/\.[^.]+$/, '')
       let dataUrls = []
-
       if (isPDF) {
         setUploadProgress('Rendering PDF pages…')
         dataUrls = await renderPDF(file)
       } else {
         dataUrls = await new Promise(res => {
-          const reader = new FileReader()
-          reader.onload = ev => res([ev.target.result])
-          reader.readAsDataURL(file)
+          const r = new FileReader()
+          r.onload = ev => res([ev.target.result])
+          r.readAsDataURL(file)
         })
       }
-
-      // Upload all pages to Supabase Storage
       const uploadedUrls = []
       for (let i = 0; i < dataUrls.length; i++) {
         setUploadProgress(`Uploading page ${i + 1} of ${dataUrls.length}…`)
-        const url = await uploadPage(key, i, dataUrls[i])
-        uploadedUrls.push(url)
+        uploadedUrls.push(await uploadPage(key, i, dataUrls[i]))
       }
-
-      const project = {
-        key,
-        name,
-        type: isPDF ? 'pdf' : 'image',
-        page_count: dataUrls.length,
-        thumbnail_url: uploadedUrls[0],
-        open_count: 0,
-        resolved_count: 0,
-        uploaded_at: new Date().toISOString(),
-      }
-
-      setUploadProgress('Saving project…')
+      const project = { key, name, type: isPDF ? 'pdf' : 'image', page_count: dataUrls.length, thumbnail_url: uploadedUrls[0], open_count: 0, resolved_count: 0, uploaded_at: new Date().toISOString() }
+      setUploadProgress('Saving…')
       await upsertProject(project)
       await loadProjects()
-
-      setPageUrls(uploadedUrls)
-      setActiveProject(project)
-      setCurrentPage(0)
-      setComments([])
-      setSelected(null)
-      setPending(null)
-      setPlacing(false)
-      setShowList(false)
+      setPageUrls(uploadedUrls); setActiveProject(project); setCurrentPage(0)
+      setComments([]); setSelected(null); setPending(null); setPlacing(false); setShowList(false)
       setView('review')
-    } catch (err) {
-      alert('Upload failed: ' + err.message)
-      console.error(err)
-    } finally {
-      setUploading(false)
-      setUploadProgress('')
-      e.target.value = ''
-    }
+    } catch (err) { alert('Upload failed: ' + err.message) }
+    finally { setUploading(false); setUploadProgress(''); e.target.value = '' }
   }
 
   async function openProject(project) {
-    setLoading(true)
-    setActiveProject(project)
-    setCurrentPage(0)
-    setComments([])
-    setSelected(null)
-    setPending(null)
-    setPlacing(false)
-    setShowList(false)
-
-    // Build page URLs from storage
+    setLoading(true); setActiveProject(project); setCurrentPage(0)
+    setComments([]); setSelected(null); setPending(null); setPlacing(false); setShowList(false)
     const urls = []
-    for (let i = 0; i < project.page_count; i++) {
-      urls.push(getPageUrl(project.key, i))
-    }
-    setPageUrls(urls)
-    setView('review')
-    setLoading(false)
+    for (let i = 0; i < project.page_count; i++) urls.push(getPageUrl(project.key, i))
+    setPageUrls(urls); setView('review'); setLoading(false)
   }
 
   async function handleDeleteProject(key) {
     if (!confirm('Delete this project and all its comments?')) return
     try {
-      await dbDeleteProject(key)
-      await loadProjects()
-      if (activeProject?.key === key) {
-        setActiveProject(null)
-        setView('gallery')
-      }
-    } catch (e) {
-      alert('Failed to delete: ' + e.message)
-    }
+      await dbDeleteProject(key); await loadProjects()
+      if (activeProject?.key === key) { setActiveProject(null); setView('gallery') }
+    } catch (e) { alert('Failed to delete: ' + e.message) }
   }
 
-  // ── Comment Actions ────────────────────────────────────────────────────────
   function handleImageClick(e) {
     if (!placing) return
     const rect = imgRef.current.getBoundingClientRect()
-    setPending({
-      x: ((e.clientX - rect.left) / rect.width) * 100,
-      y: ((e.clientY - rect.top) / rect.height) * 100,
-    })
+    setPending({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 })
     setPlacing(false)
   }
 
@@ -293,153 +255,127 @@ export default function App() {
     if (!form.author.trim() || !form.text.trim() || !pending) return
     setSaving(true)
     try {
-      const c = await addComment({
-        project_key: activeProject.key,
-        page: currentPage,
-        x: pending.x,
-        y: pending.y,
-        author: form.author.trim(),
-        text: form.text.trim(),
-        color: COLORS[form.color].bg,
-        resolved: false,
-      })
-      setPending(null)
-      setForm(f => ({ ...f, text: '' }))
-      setSelected(c)
+      const c = await addComment({ project_key: activeProject.key, page: currentPage, x: pending.x, y: pending.y, author: form.author.trim(), text: form.text.trim(), color: COLORS[form.color].bg, resolved: false })
+      setPending(null); setForm(f => ({ ...f, text: '' })); setSelected(c)
       await updateProjectCounts(activeProject.key)
-    } catch (e) {
-      alert('Failed to save comment: ' + e.message)
-    }
+    } catch (e) { alert('Failed to save: ' + e.message) }
     setSaving(false)
   }
 
   async function handleResolve(comment) {
     try {
       await updateComment(comment.id, { resolved: !comment.resolved })
-      await loadComments()
-      await updateProjectCounts(activeProject.key)
+      await loadComments(); await updateProjectCounts(activeProject.key)
       setSelected(c => c?.id === comment.id ? { ...c, resolved: !c.resolved } : c)
-    } catch (e) {
-      alert('Failed to update: ' + e.message)
-    }
+    } catch (e) { alert('Failed to update: ' + e.message) }
   }
 
   async function handleDelete(id) {
-    try {
-      await deleteComment(id)
-      setSelected(null)
-      await updateProjectCounts(activeProject.key)
-    } catch (e) {
-      alert('Failed to delete: ' + e.message)
-    }
+    try { await deleteComment(id); setSelected(null); await updateProjectCounts(activeProject.key) }
+    catch (e) { alert('Failed to delete: ' + e.message) }
   }
 
   async function updateProjectCounts(projectKey) {
     const all = await getAllProjectComments(projectKey)
     const open_count = all.filter(c => !c.resolved).length
     const resolved_count = all.filter(c => c.resolved).length
-    await supabase
-      .from('projects')
-      .update({ open_count, resolved_count })
-      .eq('key', projectKey)
-    setProjects(prev => prev.map(p =>
-      p.key === projectKey ? { ...p, open_count, resolved_count } : p
-    ))
+    await supabase.from('projects').update({ open_count, resolved_count }).eq('key', projectKey)
+    setProjects(prev => prev.map(p => p.key === projectKey ? { ...p, open_count, resolved_count } : p))
   }
 
   const open = comments.filter(c => !c.resolved)
   const done = comments.filter(c => c.resolved)
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', height: '100vh', display: 'flex', flexDirection: 'column', background: '#0A0F1E', color: '#E2E8F0' }}>
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", height: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, color: T.text }}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: '#111827', borderBottom: '1px solid #1F2D40', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', background: T.surface, borderBottom: `1px solid ${T.border}`, flexShrink: 0, height: 56, boxShadow: T.shadow }}>
+
+        {/* Logo */}
         <button onClick={() => setView('gallery')}
-          style={{ fontWeight: 800, fontSize: 16, background: 'linear-gradient(135deg,#60A5FA,#A78BFA)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', border: 'none', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}>
-          ◆ ReviewDrop
+          style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 7, background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 14 }}>R</div>
+          <span style={{ fontWeight: 700, fontSize: 16, color: T.navy, letterSpacing: -0.3 }}>ReviewDrop</span>
         </button>
 
+        {/* Divider */}
+        <div style={{ width: 1, height: 24, background: T.border }} />
+
+        {/* Nav */}
+        <nav style={{ display: 'flex', gap: 2 }}>
+          {[{ id: 'gallery', label: '🗂 Projects', count: projects.length }].concat(
+            activeProject ? [{ id: 'review', label: '✏️ Review' }] : []
+          ).map(item => (
+            <button key={item.id} onClick={() => setView(item.id)}
+              style={{ padding: '6px 12px', borderRadius: T.radius, background: view === item.id ? T.primaryBg : 'transparent', color: view === item.id ? T.primary : T.textSub, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: view === item.id ? 600 : 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {item.label}
+              {item.count > 0 && <span style={{ background: T.border, color: T.textSub, borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{item.count}</span>}
+            </button>
+          ))}
+        </nav>
+
+        {/* Breadcrumb in review */}
         {view === 'review' && activeProject && (
-          <>
-            <span style={{ color: '#334155' }}>/</span>
-            <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {activeProject.name}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 4 }}>
+            <span style={{ color: T.textMuted }}>›</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.text, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeProject.name}</span>
             {pageUrls.length > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
                 <button onClick={() => { setCurrentPage(p => Math.max(0, p - 1)); setSelected(null) }} disabled={currentPage === 0}
-                  style={{ padding: '3px 8px', borderRadius: 6, background: '#1E293B', border: '1px solid #334155', color: currentPage === 0 ? '#334155' : '#94A3B8', cursor: currentPage === 0 ? 'default' : 'pointer', fontSize: 12 }}>‹</button>
-                <span style={{ fontSize: 12, color: '#64748B' }}>{currentPage + 1} / {pageUrls.length}</span>
+                  style={{ padding: '3px 8px', borderRadius: 6, background: T.bg, border: `1px solid ${T.border}`, color: currentPage === 0 ? T.textMuted : T.text, cursor: currentPage === 0 ? 'default' : 'pointer', fontSize: 12 }}>‹</button>
+                <span style={{ fontSize: 12, color: T.textSub, minWidth: 50, textAlign: 'center' }}>{currentPage + 1} / {pageUrls.length}</span>
                 <button onClick={() => { setCurrentPage(p => Math.min(pageUrls.length - 1, p + 1)); setSelected(null) }} disabled={currentPage === pageUrls.length - 1}
-                  style={{ padding: '3px 8px', borderRadius: 6, background: '#1E293B', border: '1px solid #334155', color: currentPage === pageUrls.length - 1 ? '#334155' : '#94A3B8', cursor: currentPage === pageUrls.length - 1 ? 'default' : 'pointer', fontSize: 12 }}>›</button>
+                  style={{ padding: '3px 8px', borderRadius: 6, background: T.bg, border: `1px solid ${T.border}`, color: currentPage === pageUrls.length - 1 ? T.textMuted : T.text, cursor: currentPage === pageUrls.length - 1 ? 'default' : 'pointer', fontSize: 12 }}>›</button>
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {/* Nav tabs */}
-        <div style={{ display: 'flex', gap: 4, marginLeft: 6 }}>
-          <button onClick={() => setView('gallery')}
-            style={{ padding: '5px 12px', borderRadius: 7, background: view === 'gallery' ? '#1E40AF' : 'transparent', color: view === 'gallery' ? '#93C5FD' : '#475569', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-            🗂 Gallery {projects.length > 0 && `(${projects.length})`}
-          </button>
-          {activeProject && (
-            <button onClick={() => setView('review')}
-              style={{ padding: '5px 12px', borderRadius: 7, background: view === 'review' ? '#1E40AF' : 'transparent', color: view === 'review' ? '#93C5FD' : '#475569', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-              ✏️ Review
-            </button>
-          )}
-        </div>
-
+        {/* Right actions */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {view === 'review' && activeProject && (
             <>
-              <button onClick={() => { setPlacing(!placing); setPending(null) }}
-                style={{ padding: '7px 14px', borderRadius: 8, background: placing ? '#F43F5E' : '#8B5CF6', color: 'white', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: 13 }}>
+              <Btn variant={placing ? 'danger' : 'secondary'} onClick={() => { setPlacing(!placing); setPending(null) }}>
                 {placing ? '✕ Cancel' : '📌 Pin Comment'}
-              </button>
-              <button onClick={() => { setShowList(!showList); setSelected(null) }}
-                style={{ padding: '7px 14px', borderRadius: 8, background: showList ? '#1E40AF' : '#1E293B', color: '#93C5FD', fontWeight: 600, border: '1px solid #2D3748', cursor: 'pointer', fontSize: 13 }}>
-                {open.length > 0 && <span style={{ background: '#F43F5E', color: 'white', borderRadius: 10, padding: '0 5px', fontSize: 10, marginRight: 4, fontWeight: 800 }}>{open.length}</span>}
+              </Btn>
+              <Btn variant="secondary" onClick={() => { setShowList(!showList); setSelected(null) }}>
+                {open.length > 0 && <span style={{ background: T.danger, color: 'white', borderRadius: 10, padding: '0 5px', fontSize: 10, fontWeight: 800 }}>{open.length}</span>}
                 Threads
-              </button>
+              </Btn>
             </>
           )}
-          <button onClick={() => fileRef.current.click()} disabled={uploading}
-            style={{ padding: '7px 14px', borderRadius: 8, background: 'linear-gradient(135deg,#3B82F6,#8B5CF6)', color: 'white', fontWeight: 700, border: 'none', cursor: uploading ? 'default' : 'pointer', fontSize: 13, opacity: uploading ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+          <Btn onClick={() => fileRef.current.click()} disabled={uploading}>
             {uploading ? uploadProgress : '↑ Upload'}
-          </button>
+          </Btn>
           <input ref={fileRef} type="file" accept="image/*,.pdf,application/pdf" onChange={handleFile} style={{ display: 'none' }} />
-          {saving && <span style={{ fontSize: 11, color: '#64748B' }}>saving…</span>}
+          {saving && <span style={{ fontSize: 12, color: T.textMuted }}>Saving…</span>}
         </div>
-      </div>
+      </header>
 
+      {/* Placing banner */}
       {placing && (
-        <div style={{ background: '#7C3AED', color: 'white', textAlign: 'center', padding: '6px', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-          🎯 Click anywhere on the screenshot to drop your feedback pin
+        <div style={{ background: T.primary, color: 'white', textAlign: 'center', padding: '7px', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+          🎯 Click anywhere on the image to drop a feedback pin
         </div>
       )}
 
       {/* ── GALLERY ── */}
       {view === 'gallery' && (
-        <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
           {projects.length === 0 ? (
-            <div style={{ height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-              <div style={{ fontSize: 52 }}>🗂️</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#475569' }}>No projects yet</div>
-              <div style={{ fontSize: 13, color: '#334155', maxWidth: 340, textAlign: 'center', lineHeight: 1.7 }}>
-                Upload a screenshot or PDF to get started. Each file becomes a project your whole team can comment on.
+            <div style={{ maxWidth: 480, margin: '80px auto 0', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, background: T.primaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>🗂️</div>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: T.navy, marginBottom: 8 }}>No projects yet</div>
+                <div style={{ fontSize: 14, color: T.textSub, lineHeight: 1.7 }}>Upload a screenshot or PDF to start collecting feedback. Each file becomes a project your team can comment on in real time.</div>
               </div>
-              <button onClick={() => fileRef.current.click()}
-                style={{ padding: '10px 24px', borderRadius: 10, background: 'linear-gradient(135deg,#3B82F6,#8B5CF6)', color: 'white', fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer' }}>
-                ↑ Upload Screenshot or PDF
-              </button>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <Btn size="lg" onClick={() => fileRef.current.click()}>↑ Upload Screenshot or PDF</Btn>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 {[{ icon: '🖼️', label: 'PNG / JPG / WebP' }, { icon: '📄', label: 'PDF (multi-page)' }].map(t => (
-                  <div key={t.label} style={{ padding: '8px 16px', borderRadius: 8, background: '#111827', border: '1px solid #1F2D40', fontSize: 12, color: '#475569', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span>{t.icon}</span><span>{t.label}</span>
+                  <div key={t.label} style={{ padding: '8px 16px', borderRadius: T.radius, background: T.surface, border: `1px solid ${T.border}`, fontSize: 12, color: T.textSub, display: 'flex', gap: 6, alignItems: 'center', boxShadow: T.shadow }}>
+                    {t.icon} {t.label}
                   </div>
                 ))}
               </div>
@@ -447,18 +383,14 @@ export default function App() {
           ) : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#94A3B8' }}>
-                  Projects <span style={{ color: '#334155', fontSize: 14, fontWeight: 400 }}>({projects.length})</span>
+                <div>
+                  <h1 style={{ fontSize: 20, fontWeight: 700, color: T.navy, margin: 0 }}>Projects</h1>
+                  <p style={{ fontSize: 13, color: T.textSub, margin: '2px 0 0' }}>{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
                 </div>
-                <button onClick={() => fileRef.current.click()}
-                  style={{ padding: '7px 16px', borderRadius: 8, background: 'linear-gradient(135deg,#3B82F6,#8B5CF6)', color: 'white', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13 }}>
-                  ↑ New Upload
-                </button>
+                <Btn onClick={() => fileRef.current.click()}>↑ New Upload</Btn>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-                {projects.map(p => (
-                  <ProjectCard key={p.key} project={p} onOpen={openProject} onDelete={handleDeleteProject} />
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 16 }}>
+                {projects.map(p => <ProjectCard key={p.key} project={p} onOpen={openProject} onDelete={handleDeleteProject} />)}
               </div>
             </>
           )}
@@ -470,116 +402,114 @@ export default function App() {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
           {/* Canvas */}
-          <div style={{ flex: 1, overflow: 'auto', background: '#0A0F1E' }}>
+          <div style={{ flex: 1, overflow: 'auto', background: '#E8EAED' }}>
             {loading ? (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>Loading…</div>
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textSub, gap: 8 }}>
+                <span style={{ fontSize: 18 }}>⏳</span> Loading…
+              </div>
             ) : pageUrls.length === 0 ? (
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#334155' }}>
-                <div style={{ fontSize: 36 }}>⚠️</div>
-                <div style={{ fontSize: 14, color: '#475569' }}>Could not load this file.</div>
-                <button onClick={() => setView('gallery')} style={{ padding: '7px 16px', borderRadius: 8, background: '#1E293B', color: '#94A3B8', border: '1px solid #334155', cursor: 'pointer', fontSize: 13 }}>← Gallery</button>
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <span style={{ fontSize: 32 }}>⚠️</span>
+                <div style={{ fontSize: 14, color: T.textSub }}>Could not load this file.</div>
+                <Btn variant="secondary" onClick={() => setView('gallery')}>← Back to Projects</Btn>
               </div>
             ) : (
-              <div style={{ position: 'relative', display: 'inline-block', minWidth: '100%' }}>
-                <img ref={imgRef} src={pageUrls[currentPage]} alt="review"
-                  onClick={handleImageClick}
-                  style={{ display: 'block', width: '100%', cursor: placing ? 'crosshair' : 'default', userSelect: 'none' }}
-                  draggable={false}
-                />
-                {/* Pins */}
-                {comments.map(c => (
-                  <div key={c.id}
-                    onClick={e => { e.stopPropagation(); setSelected(c); setShowList(false) }}
-                    title={`${c.author}: ${c.text}`}
-                    style={{ position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, transform: 'translate(-50%, -100%)', cursor: 'pointer', zIndex: 10, filter: selected?.id === c.id ? 'drop-shadow(0 0 8px white)' : 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))', transition: 'filter 0.15s' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50% 50% 50% 0', background: c.resolved ? '#6B7280' : c.color, border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 13, opacity: c.resolved ? 0.55 : 1 }}>
-                      {c.author[0]?.toUpperCase()}
+              <div style={{ padding: 24 }}>
+                <div style={{ boxShadow: T.shadowLg, borderRadius: T.radius, overflow: 'hidden', position: 'relative' }}>
+                  <img ref={imgRef} src={pageUrls[currentPage]} alt="review" onClick={handleImageClick}
+                    style={{ display: 'block', width: '100%', cursor: placing ? 'crosshair' : 'default', userSelect: 'none' }}
+                    draggable={false}
+                  />
+                  {/* Pins */}
+                  {comments.map(c => (
+                    <div key={c.id} onClick={e => { e.stopPropagation(); setSelected(c); setShowList(false) }}
+                      title={`${c.author}: ${c.text}`}
+                      style={{ position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, transform: 'translate(-50%, -100%)', cursor: 'pointer', zIndex: 10, filter: selected?.id === c.id ? `drop-shadow(0 0 6px ${c.color})` : 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))', transition: 'filter 0.15s' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50% 50% 50% 0', background: c.resolved ? T.textMuted : c.color, border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 13, opacity: c.resolved ? 0.5 : 1 }}>
+                        {c.author[0]?.toUpperCase()}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {/* Ghost pin */}
-                {pending && (
-                  <div style={{ position: 'absolute', left: `${pending.x}%`, top: `${pending.y}%`, transform: 'translate(-50%, -100%)', width: 32, height: 32, borderRadius: '50% 50% 50% 0', background: COLORS[form.color].bg, border: '2.5px solid white', opacity: 0.8, pointerEvents: 'none', animation: 'bob 0.8s ease-in-out infinite' }} />
-                )}
+                  ))}
+                  {/* Ghost pin */}
+                  {pending && (
+                    <div style={{ position: 'absolute', left: `${pending.x}%`, top: `${pending.y}%`, transform: 'translate(-50%, -100%)', width: 32, height: 32, borderRadius: '50% 50% 50% 0', background: COLORS[form.color].bg, border: '2.5px solid white', opacity: 0.85, pointerEvents: 'none', animation: 'bob 0.8s ease-in-out infinite' }} />
+                  )}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Comment detail panel */}
+          {/* Comment detail */}
           {selected && !showList && (
-            <div style={{ width: 300, background: '#111827', borderLeft: '1px solid #1F2D40', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #1F2D40', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>Comment</span>
-                <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            <aside style={{ width: 300, background: T.surface, borderLeft: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, boxShadow: '-2px 0 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: T.navy }}>Comment</span>
+                <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1, borderRadius: 4, padding: '0 2px' }}>×</button>
               </div>
               <div style={{ padding: 16, flex: 1, overflow: 'auto' }}>
-                <div style={{ borderLeft: `3px solid ${selected.color}`, paddingLeft: 12, marginBottom: 16 }}>
+                <div style={{ borderLeft: `3px solid ${selected.color}`, paddingLeft: 12, marginBottom: 16, background: T.bg, borderRadius: `0 ${T.radius} ${T.radius} 0`, padding: '12px 12px 12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: selected.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: selected.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
                       {selected.author[0]?.toUpperCase()}
                     </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{selected.author}</div>
-                      <div style={{ fontSize: 10, color: '#475569' }}>
-                        {new Date(selected.created_at).toLocaleString()}
-                      </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{selected.author}</div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>{new Date(selected.created_at).toLocaleString()}</div>
                     </div>
-                    {selected.resolved && (
-                      <span style={{ marginLeft: 'auto', fontSize: 10, background: '#064E3B', color: '#6EE7B7', padding: '2px 7px', borderRadius: 10, fontWeight: 600 }}>RESOLVED</span>
-                    )}
+                    {selected.resolved && <Badge color="green">✓ Done</Badge>}
                   </div>
-                  <div style={{ fontSize: 14, color: '#CBD5E1', lineHeight: 1.6 }}>{selected.text}</div>
+                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{selected.text}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => handleResolve(selected)}
-                    style={{ flex: 1, padding: '9px', borderRadius: 8, background: selected.resolved ? '#374151' : '#065F46', color: selected.resolved ? '#9CA3AF' : '#6EE7B7', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                  <Btn variant={selected.resolved ? 'secondary' : 'primary'} onClick={() => handleResolve(selected)} style={{ flex: 1 }}>
                     {selected.resolved ? '↩ Reopen' : '✓ Resolve'}
-                  </button>
-                  <button onClick={() => handleDelete(selected.id)}
-                    style={{ padding: '9px 13px', borderRadius: 8, background: '#450A0A', color: '#FCA5A5', border: 'none', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                  </Btn>
+                  <Btn variant="danger" onClick={() => handleDelete(selected.id)}>🗑</Btn>
                 </div>
               </div>
-            </div>
+            </aside>
           )}
 
           {/* Threads list */}
           {showList && (
-            <div style={{ width: 300, background: '#111827', borderLeft: '1px solid #1F2D40', display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #1F2D40', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>Page {currentPage + 1} Comments ({comments.length})</span>
-                <button onClick={() => setShowList(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            <aside style={{ width: 300, background: T.surface, borderLeft: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden', boxShadow: '-2px 0 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: T.navy }}>Threads — Page {currentPage + 1}</span>
+                <button onClick={() => setShowList(false)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
               </div>
               <div style={{ flex: 1, overflow: 'auto' }}>
                 {comments.length === 0 && (
-                  <div style={{ padding: 24, textAlign: 'center', color: '#334155', fontSize: 13 }}>No comments on this page yet.</div>
+                  <div style={{ padding: 24, textAlign: 'center', color: T.textSub, fontSize: 13 }}>No comments on this page yet.</div>
                 )}
-                {open.length > 0 && <div style={{ padding: '8px 16px 4px', fontSize: 10, color: '#475569', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>Open · {open.length}</div>}
+                {open.length > 0 && (
+                  <div style={{ padding: '10px 16px 4px', fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>Open · {open.length}</div>
+                )}
                 {open.map(c => (
                   <div key={c.id} onClick={() => { setSelected(c); setShowList(false) }}
-                    style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: '1px solid #0D1526' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#1E293B'}
+                    style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.bg}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <div style={{ display: 'flex', gap: 9 }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: c.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 11, flexShrink: 0, marginTop: 1 }}>{c.author[0]?.toUpperCase()}</div>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: c.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 12, flexShrink: 0, marginTop: 1 }}>{c.author[0]?.toUpperCase()}</div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#CBD5E1' }}>{c.author}</div>
-                        <div style={{ fontSize: 12, color: '#475569', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</div>
-                        <div style={{ fontSize: 10, color: '#334155', marginTop: 3 }}>{new Date(c.created_at).toLocaleString()}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{c.author}</div>
+                        <div style={{ fontSize: 12, color: T.textSub, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</div>
+                        <div style={{ fontSize: 11, color: T.textMuted, marginTop: 3 }}>{new Date(c.created_at).toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
                 ))}
                 {done.length > 0 && (
                   <>
-                    <div style={{ padding: '12px 16px 4px', fontSize: 10, color: '#334155', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', borderTop: '1px solid #1F2D40', marginTop: 4 }}>Resolved · {done.length}</div>
+                    <div style={{ padding: '10px 16px 4px', fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', borderTop: `1px solid ${T.border}`, marginTop: 4 }}>Resolved · {done.length}</div>
                     {done.map(c => (
                       <div key={c.id} onClick={() => { setSelected(c); setShowList(false) }}
-                        style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: '1px solid #0D1526', opacity: 0.4 }}>
+                        style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, opacity: 0.5 }}>
                         <div style={{ display: 'flex', gap: 9 }}>
-                          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 11, flexShrink: 0 }}>{c.author[0]?.toUpperCase()}</div>
+                          <div style={{ width: 26, height: 26, borderRadius: '50%', background: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{c.author[0]?.toUpperCase()}</div>
                           <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>{c.author} ✓</div>
-                            <div style={{ fontSize: 12, color: '#374155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: T.textSub }}>{c.author} ✓</div>
+                            <div style={{ fontSize: 12, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</div>
                           </div>
                         </div>
                       </div>
@@ -587,42 +517,51 @@ export default function App() {
                   </>
                 )}
               </div>
-            </div>
+            </aside>
           )}
         </div>
       )}
 
-      {/* Drop comment popup */}
+      {/* ── Drop comment popup ── */}
       {pending && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, width: 290, background: '#111827', borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,0.7)', border: '1px solid #1F2D40', zIndex: 9999, overflow: 'hidden' }}>
-          <div style={{ padding: '11px 14px', background: '#0A0F1E', fontWeight: 700, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>📌 Drop a comment</span>
-            <button onClick={() => setPending(null)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+        <div style={{ position: 'fixed', bottom: 24, right: 24, width: 300, background: T.surface, borderRadius: T.radiusLg, boxShadow: T.shadowLg, border: `1px solid ${T.border}`, zIndex: 9999, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, fontSize: 14, color: T.navy, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: T.bg }}>
+            <span>📌 Leave a comment</span>
+            <button onClick={() => setPending(null)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
-          <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <input value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} placeholder="Your name" autoFocus
-              style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid #2D3748', background: '#0A0F1E', color: '#E2E8F0', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-            <textarea value={form.text} onChange={e => setForm(f => ({ ...f, text: e.target.value }))}
-              onKeyDown={e => e.key === 'Enter' && e.metaKey && dropComment()}
-              placeholder="Your feedback… (⌘↵ to submit)" rows={3}
-              style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid #2D3748', background: '#0A0F1E', color: '#E2E8F0', fontSize: 13, outline: 'none', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Your name</label>
+              <input value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} placeholder="e.g. Sarah" autoFocus
+                style={{ width: '100%', padding: '8px 10px', borderRadius: T.radius, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Feedback</label>
+              <textarea value={form.text} onChange={e => setForm(f => ({ ...f, text: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && e.metaKey && dropComment()}
+                placeholder="What's your feedback here? (⌘↵ to submit)" rows={3}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: T.radius, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
             <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, marginRight: 2 }}>COLOR</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5 }}>Color</span>
               {COLORS.map((c, i) => (
                 <div key={i} onClick={() => setForm(f => ({ ...f, color: i }))}
-                  style={{ width: 22, height: 22, borderRadius: '50%', background: c.bg, cursor: 'pointer', border: form.color === i ? '2.5px solid white' : '2.5px solid transparent', boxSizing: 'border-box', transform: form.color === i ? 'scale(1.2)' : 'scale(1)', transition: 'transform 0.1s' }} />
+                  style={{ width: 22, height: 22, borderRadius: '50%', background: c.bg, cursor: 'pointer', border: form.color === i ? `3px solid ${T.navy}` : `2px solid transparent`, boxSizing: 'border-box', transition: 'transform 0.1s', transform: form.color === i ? 'scale(1.15)' : 'scale(1)' }} />
               ))}
             </div>
-            <button onClick={dropComment} disabled={!form.author.trim() || !form.text.trim() || saving}
-              style={{ padding: '10px', borderRadius: 8, background: form.author.trim() && form.text.trim() ? COLORS[form.color].bg : '#1E293B', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, opacity: saving ? 0.7 : 1 }}>
+            <Btn onClick={dropComment} disabled={!form.author.trim() || !form.text.trim() || saving}
+              style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : 'Drop Comment ✓'}
-            </button>
+            </Btn>
           </div>
         </div>
       )}
 
       <style>{`
-        input::placeholder, textarea::placeholder { color: #334155 !important; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; }
+        input::placeholder, textarea::placeholder { color: ${T.textMuted}; }
+        input:focus, textarea:focus { border-color: ${T.primary} !important; box-shadow: 0 0 0 3px ${T.primaryBg}; }
         @keyframes bob { 0%,100%{transform:translate(-50%,-105%) scale(1)} 50%{transform:translate(-50%,-115%) scale(1.1)} }
       `}</style>
     </div>
