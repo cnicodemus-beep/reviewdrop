@@ -74,17 +74,48 @@ function Badge({ children, color = 'gray' }) {
   return <span style={{ ...colors[color], fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20 }}>{children}</span>
 }
 
+// ─── Inline editable name ─────────────────────────────────────────────────────
+function InlineName({ name, onCommit, style = {}, inputStyle = {} }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(name)
+  const inputRef = useRef()
+
+  useEffect(() => { setVal(name) }, [name])
+
+  function start(e) {
+    e.stopPropagation()
+    setVal(name)
+    setEditing(true)
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 30)
+  }
+
+  function commit() {
+    setEditing(false)
+    if (val.trim() && val.trim() !== name) onCommit(val.trim())
+    else setVal(name)
+  }
+
+  if (editing) return (
+    <input ref={inputRef} value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setVal(name); setEditing(false) } }}
+      onClick={e => e.stopPropagation()}
+      style={{ fontSize: 14, fontWeight: 600, color: T.text, border: `1.5px solid ${T.primary}`, borderRadius: 5, padding: '1px 6px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', boxShadow: `0 0 0 3px ${T.primaryBg}`, width: '100%', ...inputStyle }}
+    />
+  )
+
+  return (
+    <span onDoubleClick={start} title="Double-click to rename"
+      style={{ cursor: 'text', userSelect: 'none', ...style }}>
+      {name}
+    </span>
+  )
+}
+
 // ─── Project Card ─────────────────────────────────────────────────────────────
 function ProjectCard({ project, onOpen, onDelete, onRename }) {
   const [hov, setHov] = useState(false)
-
-  function handleRenameClick(e) {
-    e.stopPropagation()
-    const newName = window.prompt('Rename project:', project.name)
-    if (newName && newName.trim() && newName.trim() !== project.name) {
-      onRename(project.key, newName.trim())
-    }
-  }
 
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -102,12 +133,10 @@ function ProjectCard({ project, onOpen, onDelete, onRename }) {
 
       {/* Info */}
       <div style={{ padding: '12px 14px', flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <div onClick={() => onOpen(project)} style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, cursor: 'pointer' }}>{project.name}</div>
-          {hov && (
-            <button onClick={handleRenameClick} title="Rename"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, fontSize: 12, padding: 2, flexShrink: 0, lineHeight: 1, borderRadius: 4 }}>✏️</button>
-          )}
+        <div style={{ marginBottom: 8, overflow: 'hidden' }}>
+          <InlineName name={project.name} onCommit={newName => onRename(project.key, newName)}
+            style={{ fontSize: 14, fontWeight: 600, color: T.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
+          {hov && <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>Double-click name to rename</div>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: T.textMuted }}>{new Date(project.uploaded_at).toLocaleDateString()}</span>
@@ -315,21 +344,16 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Breadcrumb with rename */}
+        {/* Breadcrumb with double-click rename */}
         {view === 'review' && activeProject && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
             <span style={{ color: T.textMuted }}>›</span>
-            <button
-              onClick={() => {
-                const newName = window.prompt('Rename project:', activeProject.name)
-                if (newName && newName.trim() && newName.trim() !== activeProject.name) {
-                  handleRename(activeProject.key, newName.trim())
-                }
-              }}
-              title="Click to rename"
-              style={{ fontSize: 13, fontWeight: 600, color: T.text, background: 'none', border: 'none', cursor: 'pointer', padding: '3px 6px', borderRadius: 5, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
-              {activeProject.name} <span style={{ fontSize: 11, color: T.textMuted }}>✏️</span>
-            </button>
+            <InlineName
+              name={activeProject.name}
+              onCommit={newName => handleRename(activeProject.key, newName)}
+              style={{ fontSize: 13, fontWeight: 600, color: T.text, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              inputStyle={{ fontSize: 13, width: 200 }}
+            />
           </div>
         )}
 
