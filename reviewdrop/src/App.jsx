@@ -77,20 +77,13 @@ function Badge({ children, color = 'gray' }) {
 // ─── Project Card ─────────────────────────────────────────────────────────────
 function ProjectCard({ project, onOpen, onDelete, onRename }) {
   const [hov, setHov] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(project.name)
-  const inputRef = useRef()
 
-  function startEdit(e) {
+  function handleRenameClick(e) {
     e.stopPropagation()
-    setEditing(true)
-    setTimeout(() => inputRef.current?.focus(), 50)
-  }
-
-  async function commitRename() {
-    setEditing(false)
-    if (name.trim() && name.trim() !== project.name) await onRename(project.key, name.trim())
-    else setName(project.name)
+    const newName = window.prompt('Rename project:', project.name)
+    if (newName && newName.trim() && newName.trim() !== project.name) {
+      onRename(project.key, newName.trim())
+    }
   }
 
   return (
@@ -98,7 +91,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename }) {
       style={{ background: T.surface, borderRadius: T.radiusLg, border: `1px solid ${hov ? T.borderHov : T.border}`, overflow: 'hidden', transition: 'all 0.15s', boxShadow: hov ? T.shadowMd : T.shadow, transform: hov ? 'translateY(-2px)' : 'none', position: 'relative', display: 'flex', flexDirection: 'column' }}>
 
       {/* Thumbnail */}
-      <div onClick={() => !editing && onOpen(project)} style={{ height: 148, background: T.bg, overflow: 'hidden', position: 'relative', flexShrink: 0, cursor: 'pointer' }}>
+      <div onClick={() => onOpen(project)} style={{ height: 148, background: T.bg, overflow: 'hidden', position: 'relative', flexShrink: 0, cursor: 'pointer' }}>
         {project.thumbnail_url
           ? <img src={project.thumbnail_url} alt={project.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: T.textMuted }}>{project.type === 'pdf' ? '📄' : '🖼️'}</div>}
@@ -109,17 +102,13 @@ function ProjectCard({ project, onOpen, onDelete, onRename }) {
 
       {/* Info */}
       <div style={{ padding: '12px 14px', flex: 1 }}>
-        {editing ? (
-          <input ref={inputRef} value={name} onChange={e => setName(e.target.value)}
-            onBlur={commitRename} onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setName(project.name); setEditing(false) } }}
-            onClick={e => e.stopPropagation()}
-            style={{ width: '100%', fontSize: 14, fontWeight: 600, color: T.text, border: `1px solid ${T.primary}`, borderRadius: 5, padding: '2px 6px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', boxShadow: `0 0 0 3px ${T.primaryBg}` }} />
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <div onClick={() => onOpen(project)} style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, cursor: 'pointer' }}>{project.name}</div>
-            {hov && <button onClick={startEdit} title="Rename" style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, fontSize: 13, padding: 2, flexShrink: 0, lineHeight: 1 }}>✏️</button>}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <div onClick={() => onOpen(project)} style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, cursor: 'pointer' }}>{project.name}</div>
+          {hov && (
+            <button onClick={handleRenameClick} title="Rename"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, fontSize: 12, padding: 2, flexShrink: 0, lineHeight: 1, borderRadius: 4 }}>✏️</button>
+          )}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: T.textMuted }}>{new Date(project.uploaded_at).toLocaleDateString()}</span>
           <div style={{ display: 'flex', gap: 5 }}>
@@ -130,7 +119,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename }) {
         </div>
       </div>
 
-      {hov && !editing && (
+      {hov && (
         <button onClick={e => { e.stopPropagation(); onDelete(project.key) }}
           style={{ position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.95)', border: `1px solid ${T.border}`, color: T.danger, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: T.shadow }}>×</button>
       )}
@@ -192,11 +181,8 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
   const [showList, setShowList] = useState(false)
-  const [renamingHeader, setRenamingHeader] = useState(false)
-  const [headerName, setHeaderName] = useState('')
   const fileRef = useRef()
   const realtimeRef = useRef()
-  const headerNameRef = useRef()
 
   useEffect(() => { loadProjects() }, [])
 
@@ -305,11 +291,6 @@ export default function App() {
     setProjects(prev => prev.map(p => p.key === projectKey ? { ...p, open_count, resolved_count } : p))
   }
 
-  async function commitHeaderRename() {
-    setRenamingHeader(false)
-    if (headerName.trim() && headerName.trim() !== activeProject.name) await handleRename(activeProject.key, headerName.trim())
-  }
-
   const openComments = allComments.filter(c => !c.resolved)
   const doneComments = allComments.filter(c => c.resolved)
 
@@ -334,22 +315,21 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Breadcrumb with inline rename */}
+        {/* Breadcrumb with rename */}
         {view === 'review' && activeProject && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
             <span style={{ color: T.textMuted }}>›</span>
-            {renamingHeader ? (
-              <input ref={headerNameRef} value={headerName} onChange={e => setHeaderName(e.target.value)}
-                onBlur={commitHeaderRename}
-                onKeyDown={e => { if (e.key === 'Enter') commitHeaderRename(); if (e.key === 'Escape') setRenamingHeader(false) }}
-                style={{ fontSize: 13, fontWeight: 600, color: T.text, border: `1px solid ${T.primary}`, borderRadius: 5, padding: '3px 8px', outline: 'none', fontFamily: 'inherit', width: 200, boxShadow: `0 0 0 3px ${T.primaryBg}` }} />
-            ) : (
-              <button onClick={() => { setHeaderName(activeProject.name); setRenamingHeader(true); setTimeout(() => headerNameRef.current?.focus(), 50) }}
-                title="Click to rename"
-                style={{ fontSize: 13, fontWeight: 600, color: T.text, background: 'none', border: 'none', cursor: 'pointer', padding: '3px 6px', borderRadius: 5, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {activeProject.name} ✏️
-              </button>
-            )}
+            <button
+              onClick={() => {
+                const newName = window.prompt('Rename project:', activeProject.name)
+                if (newName && newName.trim() && newName.trim() !== activeProject.name) {
+                  handleRename(activeProject.key, newName.trim())
+                }
+              }}
+              title="Click to rename"
+              style={{ fontSize: 13, fontWeight: 600, color: T.text, background: 'none', border: 'none', cursor: 'pointer', padding: '3px 6px', borderRadius: 5, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
+              {activeProject.name} <span style={{ fontSize: 11, color: T.textMuted }}>✏️</span>
+            </button>
           </div>
         )}
 
