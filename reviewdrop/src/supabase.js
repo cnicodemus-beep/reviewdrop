@@ -110,6 +110,20 @@ export async function deleteComment(id) {
   if (error) throw error
 }
 
+// ─── Comment Images ──────────────────────────────────────────────────────────
+
+export async function uploadCommentImage(projectKey, file) {
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/gif' ? 'gif' : 'jpg'
+  const uid = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+  const path = `${projectKey}/comments/${uid}.${ext}`
+  const { error } = await supabase.storage
+    .from('reviewdrop-files')
+    .upload(path, file, { upsert: false, contentType: file.type })
+  if (error) throw error
+  const { data } = supabase.storage.from('reviewdrop-files').getPublicUrl(path)
+  return data.publicUrl
+}
+
 // ─── Realtime subscription ───────────────────────────────────────────────────
 
 export function subscribeToComments(projectKey, page, callback) {
