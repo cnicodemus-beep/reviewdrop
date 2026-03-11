@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, getProjects, upsertProject, deleteProject as dbDeleteProject,
   uploadPage, getPageUrl,
-  getAllProjectComments, addComment, updateComment, deleteComment,
+  getAllProjectComments, addComment, updateComment, deleteComment, uploadCommentImage,
 } from './supabase.js'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -204,6 +204,8 @@ export default function App() {
   const [pendingPage, setPendingPage] = useState(null)
   const [pendingPos, setPendingPos] = useState(null)
   const [form, setForm] = useState({ author: '', text: '', color: 0 })
+  const [commentImage, setCommentImage] = useState(null)   // { file, preview }
+  const commentImageRef = useRef()
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -292,8 +294,12 @@ export default function App() {
     if (!form.author.trim() || !form.text.trim() || pendingPage === null) return
     setSaving(true)
     try {
-      await addComment({ project_key: activeProject.key, page: pendingPage, x: pendingPos.x, y: pendingPos.y, author: form.author.trim(), text: form.text.trim(), color: COLORS[form.color].bg, resolved: false })
-      setPendingPage(null); setPendingPos(null); setForm(f => ({ ...f, text: '' }))
+      let image_url = null
+      if (commentImage) {
+        image_url = await uploadCommentImage(activeProject.key, commentImage.file)
+      }
+      await addComment({ project_key: activeProject.key, page: pendingPage, x: pendingPos.x, y: pendingPos.y, author: form.author.trim(), text: form.text.trim(), color: COLORS[form.color].bg, resolved: false, image_url })
+      setPendingPage(null); setPendingPos(null); setForm(f => ({ ...f, text: '' })); setCommentImage(null)
       await updateProjectCounts(activeProject.key)
     } catch (e) { alert('Failed to save: ' + e.message) }
     setSaving(false)
@@ -466,6 +472,11 @@ export default function App() {
                     {selected.resolved && <Badge color="green">✓ Done</Badge>}
                   </div>
                   <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{selected.text}</div>
+                  {selected.image_url && (
+                    <a href={selected.image_url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 10, borderRadius: T.radius, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+                      <img src={selected.image_url} alt="attachment" style={{ width: '100%', display: 'block', maxHeight: 200, objectFit: 'cover' }} />
+                    </a>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Btn variant={selected.resolved ? 'secondary' : 'primary'} onClick={() => handleResolve(selected)} style={{ flex: 1 }}>
@@ -499,7 +510,7 @@ export default function App() {
                           <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{c.author}</span>
                           <span style={{ fontSize: 10, color: T.textMuted }}>p.{c.page + 1}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: T.textSub, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</div>
+                        <div style={{ fontSize: 12, color: T.textSub, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.image_url ? '🖼 ' : ''}{c.text}</div>
                       </div>
                     </div>
                   </div>
@@ -532,7 +543,7 @@ export default function App() {
         <div style={{ position: 'fixed', bottom: 24, right: 24, width: 300, background: T.surface, borderRadius: T.radiusLg, boxShadow: T.shadowLg, border: `1px solid ${T.border}`, zIndex: 9999, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, fontSize: 14, color: T.navy, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: T.bg }}>
             <span>📌 Comment on page {pendingPage + 1}</span>
-            <button onClick={() => { setPendingPage(null); setPendingPos(null) }} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            <button onClick={() => { setPendingPage(null); setPendingPos(null); setCommentImage(null) }} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
@@ -553,6 +564,31 @@ export default function App() {
                 <div key={i} onClick={() => setForm(f => ({ ...f, color: i }))}
                   style={{ width: 22, height: 22, borderRadius: '50%', background: c.bg, cursor: 'pointer', border: form.color === i ? `3px solid ${T.navy}` : '2px solid transparent', boxSizing: 'border-box', transform: form.color === i ? 'scale(1.15)' : 'scale(1)', transition: 'transform 0.1s' }} />
               ))}
+            </div>
+
+            {/* Image attachment */}
+            <div>
+              <input ref={commentImageRef} type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files[0]; if (!file) return
+                  const preview = URL.createObjectURL(file)
+                  setCommentImage({ file, preview })
+                  e.target.value = ''
+                }} />
+              {commentImage ? (
+                <div style={{ position: 'relative', borderRadius: T.radius, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+                  <img src={commentImage.preview} alt="attachment" style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover' }} />
+                  <button onClick={() => setCommentImage(null)}
+                    style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                </div>
+              ) : (
+                <button onClick={() => commentImageRef.current?.click()}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: T.radius, border: `1.5px dashed ${T.border}`, background: 'transparent', color: T.textSub, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'border-color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = T.primary}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = T.border}>
+                  🖼 Attach screenshot
+                </button>
+              )}
             </div>
             <Btn onClick={dropComment} disabled={!form.author.trim() || !form.text.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : 'Drop Comment ✓'}
