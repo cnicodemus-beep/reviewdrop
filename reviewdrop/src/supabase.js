@@ -24,7 +24,7 @@ export async function upsertProject(project) {
 }
 
 export async function deleteProject(key) {
-  // Delete comments
+  // Delete comments (replies cascade from comments)
   await supabase.from('comments').delete().eq('project_key', key)
   // Delete storage files
   const { data: files } = await supabase.storage
@@ -122,6 +122,36 @@ export async function uploadCommentImage(projectKey, file) {
   if (error) throw error
   const { data } = supabase.storage.from('reviewdrop-files').getPublicUrl(path)
   return data.publicUrl
+}
+
+// ─── Replies ─────────────────────────────────────────────────────────────────
+
+export async function getReplies(commentId) {
+  const { data, error } = await supabase
+    .from('replies')
+    .select('*')
+    .eq('comment_id', commentId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addReply(reply) {
+  const { data, error } = await supabase
+    .from('replies')
+    .insert(reply)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteReply(id) {
+  const { error } = await supabase
+    .from('replies')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
 }
 
 // ─── Realtime subscription ───────────────────────────────────────────────────
