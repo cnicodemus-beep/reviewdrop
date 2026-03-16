@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, getProjects, upsertProject, deleteProject as dbDeleteProject,
   uploadPage, getPageUrl,
   getAllProjectComments, addComment, updateComment, deleteComment, uploadCommentImage,
+  getReplies, addReply, deleteReply,
 } from './supabase.js'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -48,6 +49,16 @@ async function renderPDF(file) {
     pages.push(canvas.toDataURL('image/jpeg', 0.85))
   }
   return pages
+}
+
+// ─── renderText: highlight @mentions ─────────────────────────────────────────
+function renderText(text) {
+  if (!text) return null
+  return text.split(/(@\w+)/g).map((part, i) =>
+    /^@\w+$/.test(part)
+      ? <span key={i} style={{ color: T.primary, fontWeight: 600 }}>{part}</span>
+      : part
+  )
 }
 
 // ─── Btn ──────────────────────────────────────────────────────────────────────
@@ -113,6 +124,96 @@ function InlineName({ name, onCommit, style = {}, inputStyle = {} }) {
   )
 }
 
+// ─── MentionTextarea ──────────────────────────────────────────────────────────
+function MentionTextarea({ value, onChange, onKeyDown, authors = [], placeholder, rows = 3, autoFocus, style = {} }) {
+  const [mentionQuery, setMentionQuery] = useState(null)
+  const [mentionStart, setMentionStart] = useState(-1)
+  const ref = useRef()
+
+  function handleChange(e) {
+    const val = e.target.value
+    const pos = e.target.selectionStart
+    const before = val.slice(0, pos)
+    const match = before.match(/@(\w*)$/)
+    if (match) {
+      setMentionQuery(match[1])
+      setMentionStart(match.index)
+    } else {
+      setMentionQuery(null)
+      setMentionStart(-1)
+    }
+    onChange(e)
+  }
+
+  function selectMention(name) {
+    const pos = ref.current.selectionStart
+    const before = value.slice(0, mentionStart)
+    const after = value.slice(pos)
+    const newVal = before + '@' + name + ' ' + after
+    onChange({ target: { value: newVal } })
+    setMentionQuery(null)
+    setTimeout(() => {
+      const np = mentionStart + name.length + 2
+      ref.current.setSelectionRange(np, np)
+      ref.current.focus()
+    }, 0)
+  }
+
+  const filtered = mentionQuery !== null
+    ? authors.filter(a => a.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5)
+    : []
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <textarea ref={ref} value={value} onChange={handleChange} onKeyDown={onKeyDown}
+        placeholder={placeholder} rows={rows} autoFocus={autoFocus}
+        style={{ width: '100%', padding: '8px 10px', borderRadius: T.radius, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', ...style }} />
+      {filtered.length > 0 && (
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadowMd, zIndex: 1000, minWidth: 170, overflow: 'hidden' }}>
+          {filtered.map(name => (
+            <div key={name}
+              onMouseDown={e => { e.preventDefault(); selectMention(name) }}
+              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: T.text, display: 'flex', alignItems: 'center', gap: 8 }}
+              onMouseEnter={e => e.currentTarget.style.background = T.bg}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 10, flexShrink: 0 }}>{name[0]?.toUpperCase()}</div>
+              @{name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Reply Item ───────────────────────────────────────────────────────────────
+function ReplyItem({ reply, onDelete }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ position: 'relative', display: 'flex', gap: 8 }}>
+      <div style={{ width: 24, height: 24, borderRadius: '50%', background: reply.color || T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 11, flexShrink: 0, marginTop: 1 }}>{reply.author[0]?.toUpperCase()}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{reply.author}</span>
+          <span style={{ fontSize: 10, color: T.textMuted }}>{new Date(reply.created_at).toLocaleString()}</span>
+        </div>
+        <div style={{ fontSize: 12, color: T.text, lineHeight: 1.55 }}>{renderText(reply.text)}</div>
+        {reply.image_url && (
+          <a href={reply.image_url} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', marginTop: 6, borderRadius: 6, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+            <img src={reply.image_url} alt="attachment" style={{ width: '100%', display: 'block', maxHeight: 120, objectFit: 'cover' }} />
+          </a>
+        )}
+      </div>
+      {hov && (
+        <button onClick={() => onDelete(reply.id)}
+          style={{ position: 'absolute', top: 0, right: 0, background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+      )}
+    </div>
+  )
+}
+
 // ─── Project Card ─────────────────────────────────────────────────────────────
 function ProjectCard({ project, onOpen, onDelete, onRename }) {
   const [hov, setHov] = useState(false)
@@ -168,13 +269,11 @@ function PageCanvas({ pageIndex, url, comments, placing, onPlace, onSelectCommen
 
   return (
     <div style={{ marginBottom: 24 }}>
-      {/* Page label for multi-page docs */}
       <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Page {pageIndex + 1}</div>
       <div style={{ position: 'relative', borderRadius: T.radius, overflow: 'hidden', boxShadow: T.shadowLg }}>
         <img ref={imgRef} src={url} alt={`Page ${pageIndex + 1}`} onClick={handleClick}
           style={{ display: 'block', width: '100%', cursor: placing ? 'crosshair' : 'default', userSelect: 'none' }}
           draggable={false} />
-        {/* Comment pins */}
         {comments.map(c => (
           <div key={c.id} onClick={e => { e.stopPropagation(); onSelectComment(c) }}
             title={`${c.author}: ${c.text}`}
@@ -184,7 +283,6 @@ function PageCanvas({ pageIndex, url, comments, placing, onPlace, onSelectCommen
             </div>
           </div>
         ))}
-        {/* Ghost pin for pending placement on this page */}
         {pendingPage === pageIndex && pendingPos && (
           <div style={{ position: 'absolute', left: `${pendingPos.x}%`, top: `${pendingPos.y}%`, transform: 'translate(-50%, -100%)', width: 32, height: 32, borderRadius: '50% 50% 50% 0', background: '#0D7C66', border: '2.5px solid white', opacity: 0.85, pointerEvents: 'none', animation: 'bob 0.8s ease-in-out infinite' }} />
         )}
@@ -204,7 +302,7 @@ export default function App() {
   const [pendingPage, setPendingPage] = useState(null)
   const [pendingPos, setPendingPos] = useState(null)
   const [form, setForm] = useState({ author: '', text: '', color: 0 })
-  const [commentImage, setCommentImage] = useState(null)   // { file, preview }
+  const [commentImage, setCommentImage] = useState(null)
   const commentImageRef = useRef()
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -214,6 +312,13 @@ export default function App() {
   const [showList, setShowList] = useState(false)
   const fileRef = useRef()
   const realtimeRef = useRef()
+
+  // ── Reply state ──
+  const [replies, setReplies] = useState([])
+  const [showReplyForm, setShowReplyForm] = useState(false)
+  const [replyForm, setReplyForm] = useState({ author: '', text: '' })
+  const [savingReply, setSavingReply] = useState(false)
+  const repliesRealtimeRef = useRef()
 
   useEffect(() => { loadProjects() }, [])
 
@@ -228,6 +333,22 @@ export default function App() {
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe() }
   }, [activeProject])
 
+  // Load + subscribe to replies when selected comment changes
+  useEffect(() => {
+    if (!selected) {
+      setReplies([])
+      setShowReplyForm(false)
+      return
+    }
+    loadReplies(selected.id)
+    if (repliesRealtimeRef.current) repliesRealtimeRef.current.unsubscribe()
+    repliesRealtimeRef.current = supabase
+      .channel(`replies-${selected.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'replies', filter: `comment_id=eq.${selected.id}` }, () => loadReplies(selected.id))
+      .subscribe()
+    return () => { if (repliesRealtimeRef.current) repliesRealtimeRef.current.unsubscribe() }
+  }, [selected?.id])
+
   async function loadProjects() {
     try { setProjects((await getProjects()) || []) } catch (e) { console.error(e) }
   }
@@ -235,6 +356,10 @@ export default function App() {
   async function loadAllComments() {
     if (!activeProject) return
     try { setAllComments((await getAllProjectComments(activeProject.key)) || []) } catch {}
+  }
+
+  async function loadReplies(commentId) {
+    try { setReplies((await getReplies(commentId)) || []) } catch {}
   }
 
   async function handleFile(e) {
@@ -314,8 +439,31 @@ export default function App() {
   }
 
   async function handleDelete(id) {
-    try { await deleteComment(id); setSelected(null); await updateProjectCounts(activeProject.key) }
-    catch (e) { alert('Failed: ' + e.message) }
+    try {
+      await deleteComment(id)
+      setSelected(null)
+      setReplies([])
+      setShowReplyForm(false)
+      await updateProjectCounts(activeProject.key)
+    } catch (e) { alert('Failed: ' + e.message) }
+  }
+
+  async function submitReply() {
+    if (!replyForm.author.trim() || !replyForm.text.trim()) return
+    setSavingReply(true)
+    try {
+      await addReply({ comment_id: selected.id, author: replyForm.author.trim(), text: replyForm.text.trim(), color: selected.color })
+      setReplyForm(f => ({ ...f, text: '' }))
+      setShowReplyForm(false)
+    } catch (e) { alert('Failed: ' + e.message) }
+    setSavingReply(false)
+  }
+
+  async function handleDeleteReply(id) {
+    try {
+      await deleteReply(id)
+      setReplies(prev => prev.filter(r => r.id !== id))
+    } catch (e) { alert('Failed: ' + e.message) }
   }
 
   async function updateProjectCounts(projectKey) {
@@ -328,6 +476,7 @@ export default function App() {
 
   const openComments = allComments.filter(c => !c.resolved)
   const doneComments = allComments.filter(c => c.resolved)
+  const knownAuthors = [...new Set(allComments.map(c => c.author).filter(Boolean))]
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", height: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, color: T.text }}>
@@ -445,7 +594,7 @@ export default function App() {
                   comments={allComments.filter(c => c.page === i)}
                   placing={placing}
                   onPlace={handlePlace}
-                  onSelectComment={c => { setSelected(c); setShowList(false) }}
+                  onSelectComment={c => { setSelected(c); setShowList(false); setShowReplyForm(false) }}
                   selectedId={selected?.id}
                   pendingPage={pendingPage}
                   pendingPos={pendingPos}
@@ -461,8 +610,10 @@ export default function App() {
                 <span style={{ fontWeight: 700, fontSize: 14, color: T.navy }}>Comment</span>
                 <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
               </div>
-              <div style={{ padding: 16, flex: 1, overflow: 'auto' }}>
-                <div style={{ borderLeft: `3px solid ${selected.color}`, paddingLeft: 14, marginBottom: 16, background: T.bg, borderRadius: `0 ${T.radius} ${T.radius} 0`, padding: '12px 12px 12px 14px' }}>
+              <div style={{ padding: 16, flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* Main comment */}
+                <div style={{ borderLeft: `3px solid ${selected.color}`, background: T.bg, borderRadius: `0 ${T.radius} ${T.radius} 0`, padding: '12px 12px 12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <div style={{ width: 30, height: 30, borderRadius: '50%', background: selected.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{selected.author[0]?.toUpperCase()}</div>
                     <div style={{ flex: 1 }}>
@@ -471,14 +622,58 @@ export default function App() {
                     </div>
                     {selected.resolved && <Badge color="green">✓ Done</Badge>}
                   </div>
-                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{selected.text}</div>
+                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{renderText(selected.text)}</div>
                   {selected.image_url && (
                     <a href={selected.image_url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 10, borderRadius: T.radius, overflow: 'hidden', border: `1px solid ${T.border}` }}>
                       <img src={selected.image_url} alt="attachment" style={{ width: '100%', display: 'block', maxHeight: 200, objectFit: 'cover' }} />
                     </a>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+
+                {/* Replies */}
+                {replies.length > 0 && (
+                  <div style={{ marginLeft: 8, paddingLeft: 12, borderLeft: `2px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {replies.map(r => <ReplyItem key={r.id} reply={r} onDelete={handleDeleteReply} />)}
+                  </div>
+                )}
+
+                {/* Reply button / form */}
+                {!showReplyForm ? (
+                  <button
+                    onClick={() => {
+                      setShowReplyForm(true)
+                      setReplyForm(f => ({ ...f, author: f.author || form.author }))
+                    }}
+                    style={{ alignSelf: 'flex-start', fontSize: 12, color: T.primary, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, padding: '2px 0' }}>
+                    ↩ Reply
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: T.bg, borderRadius: T.radius, padding: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reply</div>
+                    <input value={replyForm.author}
+                      onChange={e => setReplyForm(f => ({ ...f, author: e.target.value }))}
+                      placeholder="Your name"
+                      autoFocus
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: T.radius, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    <MentionTextarea
+                      value={replyForm.text}
+                      onChange={e => setReplyForm(f => ({ ...f, text: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && e.metaKey && submitReply()}
+                      authors={knownAuthors}
+                      placeholder="Reply… (type @ to tag, ⌘↵ to send)"
+                      rows={2}
+                    />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn size="sm" onClick={submitReply} disabled={!replyForm.author.trim() || !replyForm.text.trim() || savingReply}>
+                        {savingReply ? 'Sending…' : 'Send'}
+                      </Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => setShowReplyForm(false)}>Cancel</Btn>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
                   <Btn variant={selected.resolved ? 'secondary' : 'primary'} onClick={() => handleResolve(selected)} style={{ flex: 1 }}>
                     {selected.resolved ? '↩ Reopen' : '✓ Resolve'}
                   </Btn>
@@ -499,7 +694,7 @@ export default function App() {
                 {allComments.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: T.textSub, fontSize: 13 }}>No comments yet.</div>}
                 {openComments.length > 0 && <div style={{ padding: '10px 16px 4px', fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>Open · {openComments.length}</div>}
                 {openComments.map(c => (
-                  <div key={c.id} onClick={() => { setSelected(c); setShowList(false) }}
+                  <div key={c.id} onClick={() => { setSelected(c); setShowList(false); setShowReplyForm(false) }}
                     style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: `1px solid ${T.border}` }}
                     onMouseEnter={e => e.currentTarget.style.background = T.bg}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -519,7 +714,7 @@ export default function App() {
                   <>
                     <div style={{ padding: '10px 16px 4px', fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', borderTop: `1px solid ${T.border}`, marginTop: 4 }}>Resolved · {doneComments.length}</div>
                     {doneComments.map(c => (
-                      <div key={c.id} onClick={() => { setSelected(c); setShowList(false) }}
+                      <div key={c.id} onClick={() => { setSelected(c); setShowList(false); setShowReplyForm(false) }}
                         style={{ padding: '11px 16px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, opacity: 0.5 }}>
                         <div style={{ display: 'flex', gap: 9 }}>
                           <div style={{ width: 26, height: 26, borderRadius: '50%', background: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{c.author[0]?.toUpperCase()}</div>
@@ -553,10 +748,14 @@ export default function App() {
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Feedback</label>
-              <textarea value={form.text} onChange={e => setForm(f => ({ ...f, text: e.target.value }))}
+              <MentionTextarea
+                value={form.text}
+                onChange={e => setForm(f => ({ ...f, text: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && e.metaKey && dropComment()}
-                placeholder="Your feedback… (⌘↵ to submit)" rows={3}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: T.radius, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                authors={knownAuthors}
+                placeholder="Your feedback… (type @ to tag, ⌘↵ to submit)"
+                rows={3}
+              />
             </div>
             <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: T.textSub, textTransform: 'uppercase', letterSpacing: 0.5 }}>Color</span>
